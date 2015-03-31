@@ -1,0 +1,78 @@
+WEATHER
+by Tim Martin 902396824, 2015-03-31
+
+weather is a package containing source code for 2 objects: server and client.
+They are described in detail in their respective file headers.
+
+BUILDING:
+  %> make build
+  or a simple "make" will do.
+
+  This creates 2 executables. You must have gcc and the pthreads library
+  accessible.
+
+RUNNING:
+  %> ./server
+    (This must come first!)
+
+  In another terminal on the same machine,
+  %> ./client
+
+BEHAVIOR:
+  Running server will start the server on all local interfaces at port 7144.
+  Logging will begin to a log file at the same path as the server, called
+  "weather.log".
+
+  Subsequently, running client will make a connection to server and print the
+  current time of the server host to stdout.
+
+EXAMPLE OUTPUT:
+  server:
+    Weather Server, by Tim Martin 902396824, 2015-03-31
+    logging to weather.log
+    press ctrl-c to quit
+
+    socket created
+    SO_REUSEADDR set
+    bound to 0.0.0.0:7144
+    listening...
+      accepted connection from 127.0.0.1:49017
+      accepted connection from 127.0.0.1:49018
+      accepted connection from 127.0.0.1:49019
+      accepted connection from 127.0.0.1:49020
+      accepted connection from 127.0.0.1:49021
+
+  client:
+    tim@scoria ↳1 ~/code/weather% ./client
+    Weather Client, by Tim Martin 902396824, 2015-03-31
+    socket created
+    connected to 0.0.0.0:7144
+    1427830874
+
+    tim@scoria ↳0 ~/code/weather% ./client
+    Weather Client, by Tim Martin 902396824, 2015-03-31
+    socket created
+    connected to 0.0.0.0:7144
+    1427830875
+
+    tim@scoria ↳0 ~/code/weather% ./client
+    Weather Client, by Tim Martin 902396824, 2015-03-31
+    socket created
+    connected to 0.0.0.0:7144
+    1427830875
+
+    tim@scoria ↳0 ~/code/weather% ./client
+    Weather Client, by Tim Martin 902396824, 2015-03-31
+    socket created
+    connected to 0.0.0.0:7144
+    1427830876
+
+    tim@scoria ↳0 ~/code/weather% ./client
+    Weather Client, by Tim Martin 902396824, 2015-03-31
+    socket created
+    connected to 0.0.0.0:7144
+    1427830876
+
+Thanks!
+
+-Tim

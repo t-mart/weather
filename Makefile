@@ -1,7 +1,19 @@
-.PHONY: test
+CC=gcc
+CLANGSPEC=-x c -std=c99
+CFLAGS=-Werror -Wall -pedantic
+LIBS=-pthread
+DEPS=weather.c
 
-test: server
-	./server
+.PHONY: test build clean
+
+build: clean server client
 
 server: server.c
-	clang -x c -std=c99 server.c -o server -D DEBUG -Werror -Wall -pthread
+	$(CC) $(CLANGSPEC) -o $@ $^ $(DEPS) $(LIBS) $(CFLAGS)
+
+client: client.c
+	$(CC) $(CLANGSPEC) -o $@ $^ $(DEPS) $(LIBS) $(CFLAGS)
+
+clean:
+	-rm server
+	-rm client
