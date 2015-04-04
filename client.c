@@ -12,14 +12,81 @@
 
 #include "weather.h"
 
-#define MAXDATASIZE 100 // max number of bytes we can get at once
+char * help = "help          this help\n"
+	      "time          print server time\n"
+	      "weather       print server weather";
+
+char * prompt = ">>> ";
+
+char * resp_with_string(char * string) {
+	char * ret = malloc(strlen(string));
+	strncpy(ret, string, strlen(string));
+	return ret;
+}
+
+char * send_cmd(int sock_fd, char * buf, size_t len) {
+	char * recv_buf = NULL, * payload = NULL;
+	size_t recv_len = 0, payload_size = 0;
+	int rv;
+
+	sendunit(sock_fd, buf, len);
+
+	setup_sock_recv_buffer(&recv_buf, &recv_len);
+	rv = recvunit(sock_fd, recv_buf, &recv_len,
+		      &payload, &payload_size);
+	if (rv == 0)
+		// socket close, nothing to do
+		return NULL;
+	INFO_PRINT("\tmsg=\"%s\", size=%ld\n", payload, payload_size);
+	teardown_sock_recv_buffer(recv_buf);
+	if (recv_len)
+		INFO_PRINT("\tgot rid of recv_buf with \"%s\" (ord=%d, len=%ld) still in it =(\n", recv_buf, *recv_buf, recv_len);
+
+	return payload;
+}
+
+int eval_command(int sock_fd, char * buf, size_t len) {
+	size_t len_wo_nl = len - 1;
+	char * resp;
+	if (strncmp(buf, "time", len_wo_nl) == 0
+		 || strncmp(buf, "weather", len_wo_nl) == 0) {
+		if ((resp = send_cmd(sock_fd, buf, len_wo_nl)) == NULL) {
+			INFO_PRINT("\tproblem recving data\n");
+			return 0;
+		}
+		printf("%s\n", resp);
+		free(resp);
+	} else if (strncmp(buf, "exit", len_wo_nl) == 0)
+		return 0;
+	else
+		printf("%s\n", help);
+	return 1;
+}
+
+void weather_repl(int sock_fd) {
+	char * lineptr = NULL;
+	int resp;
+	size_t sz;
+	ssize_t read;
+	while (1) {
+		sz = 0;
+		printf("%s", prompt);
+		read = getline(&lineptr, &sz, stdin);
+		if (read == -1)
+			handle_error("getline");
+		resp = eval_command(sock_fd, lineptr, read);
+		free(lineptr);
+		lineptr = NULL;
+		if (!resp)
+			return;
+	}
+}
 
 int main(int argc, char *argv[])
 {
-	int tcp_socket, numbytes;
+	int tcp_socket;
 	struct sockaddr_in conn_addr_in;
 	char s[INET_ADDRSTRLEN];
-	char buf[MAXDATASIZE];
 
 	INFO_PRINT("Weather Client, by Tim Martin 902396824, 2015-03-31\n");
 
@@ -49,13 +116,7 @@ int main(int argc, char *argv[])
 	addr_to_buf(&conn_addr_in, s);
 	INFO_PRINT("connected to %s:%d\n", s, PORT);
 
-	if ((numbytes = recv(tcp_socket, buf, MAXDATASIZE-1, 0)) == -1) {
-		handle_error("recv");
-	}
-
-	buf[numbytes] = '\0';
-
-	printf("%s\n",buf);
+	weather_repl(tcp_socket);
 
 	close(tcp_socket);
 

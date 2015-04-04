@@ -5,6 +5,7 @@
  * A common header file for weather server/client code.
  */
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -20,6 +21,11 @@
 
 #define PORT 7144 // the common port for our program
 
+#define EOT 0
+
+#define MINCMDBUFSZ 2 // min payload size
+#define MAXCMDBUFSZ 32 // max payload size
+
 #define INFO_PRINT(...) fprintf(stderr, __VA_ARGS__)
 
 // From PTHREAD_CREATE(3) man pages, 2012-08-03
@@ -31,10 +37,23 @@
 
 struct thread_info {
         pthread_t thread_id;
-        int incoming_fd;
+        int sock_fd;
         struct sockaddr_in sa;
 };
 
 struct sockaddr_in build_addr_in(sa_family_t fam, int port, uint32_t addr);
 
 const char *  addr_to_buf(struct sockaddr_in * sa, char * buf);
+
+void sendunit(int sock_fd, char * buf, size_t len);
+
+int recvunit(int sock_fd, char * recv_buf, size_t * len, char ** payload_dest,
+             size_t * payload_size);
+
+/* int setup_sock_recv_buffer(char * recv_buf, size_t * recv_len); */
+int setup_sock_recv_buffer(char ** recv_buf, size_t * recv_len);
+
+int teardown_sock_recv_buffer(char * recv_buf);
+
+extern char weather_cmd;
+extern char time_cmd;

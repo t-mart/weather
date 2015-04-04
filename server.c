@@ -17,6 +17,7 @@
  */
 
 #include <time.h>
+#include <fcntl.h>
 
 #include "weather.h"
 
@@ -46,26 +47,53 @@ int write_log(struct sockaddr_in * sa, char * time) {
 	return 0;
 }
 
-static void * process_connection(void * tinfo) {
+void * process_connection(void * tinfo) {
 	/*
 	 * Process a connection: send it a clock response and log the connection
 	 * to a log file.
 	 *
 	 * This function is given to pthread_create.
 	 */
-	int * incoming_fd = &((struct thread_info *)tinfo)->incoming_fd;
+	int sock_fd = ((struct thread_info *)tinfo)->sock_fd;
 	struct sockaddr_in * sa = &((struct thread_info *)tinfo)->sa;
-	time_t now = time(NULL);
+
 	const char *fmt = "%lld";
-	int sz = snprintf(NULL, 0, fmt, (long long) now);
-	char now_s[sz + 1]; // note +1 for terminating null byte
+	time_t now = time(NULL);
+	int now_s_sz = snprintf(NULL, 0, fmt, (long long) now) + 1;
+	char now_s[now_s_sz];
+	snprintf(now_s, now_s_sz, fmt, (long long) now);
+	char * weather_s = "76.2F";
 
-	snprintf(now_s, sizeof now_s, fmt, (long long) now);
+	char * recv_buf = NULL, * payload = NULL;
+	size_t recv_len = 0, payload_size = 0;
+	int rv;
 
+	setup_sock_recv_buffer(&recv_buf, &recv_len);
 
-	if (send(*incoming_fd, now_s, sz, 0) == -1)
-		handle_error("send");
-	close(*incoming_fd);
+	while (1) {
+		rv = recvunit(sock_fd, recv_buf, &recv_len,
+			      &payload, &payload_size);
+		if (rv == 0)
+			// socket close, nothing to do
+			break;
+		INFO_PRINT("\tmsg=\"%s\", size=%ld\n", payload, payload_size);
+
+		if (strncmp(payload, "time", payload_size) == 0)
+			sendunit(sock_fd, now_s, now_s_sz);
+		else if (strncmp(payload, "weather", payload_size) == 0)
+			sendunit(sock_fd, weather_s, strlen(weather_s));
+		else
+			printf("not recognized\n");
+		free(payload);
+
+	}
+
+	teardown_sock_recv_buffer(recv_buf);
+	if (recv_len)
+		INFO_PRINT("\tgot rid of recv_buf with data still in it =(\n");
+
+	printf("closed\n");
+	close(sock_fd);
 
 	pthread_mutex_lock(&output_file_mutex);
 	write_log(sa, now_s);
@@ -154,7 +182,7 @@ int main(void) {
 		// build thread_info
 		tinfo = malloc(sizeof(struct thread_info));
 		memset(tinfo, 0, sizeof(struct thread_info)); // clear it
-		memcpy(&tinfo->incoming_fd, &incoming_fd, sizeof(int));
+		memcpy(&tinfo->sock_fd, &incoming_fd, sizeof(int));
 		memcpy(&tinfo->sa, &incoming_addr_in,
 		       sizeof(struct sockaddr_in));
 

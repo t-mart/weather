@@ -1,4 +1,4 @@
-CC=gcc
+CC=clang
 CLANGSPEC=-x c -std=c99
 CFLAGS=-Werror -Wall -pedantic
 LIBS=-pthread
