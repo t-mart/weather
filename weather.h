@@ -28,6 +28,16 @@
 
 #define INFO_PRINT(...) fprintf(stderr, __VA_ARGS__)
 
+#define DIAG_BUF(buf, len) INFO_PRINT("\tmsg=\""); \
+                           print_buffer(buf, len); \
+                           INFO_PRINT("\", sz=%zu\n", len);
+
+#define INIT_SOCK_IO(si) (si)->recv_buf = NULL; \
+	                       (si)->recv_len = 0; \
+                         (si)->ip_port_str = ip_port_string((si)->sa);
+
+#define DESTROY_SOCK_IO(si) free((si)->ip_port_str);
+
 // From PTHREAD_CREATE(3) man pages, 2012-08-03
 #define handle_error_en(en, msg) \
                  do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
@@ -35,25 +45,43 @@
 #define handle_error(msg) \
                  do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
+struct sock_io {
+  int sock_fd;
+  struct sockaddr_in sa;
+  char * ip_port_str;
+  char * recv_buf;
+  size_t recv_len;
+};
+
 struct thread_info {
         pthread_t thread_id;
-        int sock_fd;
-        struct sockaddr_in sa;
+        struct sock_io si;
 };
+
+static char * help = "COMMAND       DESCRIPTION\n"
+                     "help          this help\n"
+                     "time          print server time\n"
+                     "weather       print server weather";
+
+static pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct sockaddr_in build_addr_in(sa_family_t fam, int port, uint32_t addr);
 
-const char *  addr_to_buf(struct sockaddr_in * sa, char * buf);
+char * ip_port_string(struct sockaddr_in si);
+
+char * port_string(struct sockaddr_in si);
+
+char * ip_string(struct sockaddr_in si);
 
 void sendunit(int sock_fd, char * buf, size_t len);
 
-int recvunit(int sock_fd, char * recv_buf, size_t * len, char ** payload_dest,
-             size_t * payload_size);
+void sendstring(int sock_fd, char * buf);
 
-/* int setup_sock_recv_buffer(char * recv_buf, size_t * recv_len); */
-int setup_sock_recv_buffer(char ** recv_buf, size_t * recv_len);
+ssize_t recvunit(struct sock_io * si, char ** unit);
 
-int teardown_sock_recv_buffer(char * recv_buf);
+ssize_t extract_unit(struct sock_io * si, char ** unit);
 
-extern char weather_cmd;
-extern char time_cmd;
+int print_buffer(char * buf, size_t len);
+
+int write_log(struct sockaddr_in * sa, char * logline);
+

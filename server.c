@@ -25,80 +25,77 @@
 
 #define LOGFILE "weather.log" // path to log file
 
-pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
+int write_log(struct sockaddr_in * sa, char * logline) {
 
-int write_log(struct sockaddr_in * sa, char * time) {
 	/*
-	 * Write information to the logfile. Exclusive access is handled by the
-	 * caller.
+	 * Write information to the logfile.
 	 */
 	FILE *f = fopen(LOGFILE, "a+");
-	char s[INET_ADDRSTRLEN];
-
-	addr_to_buf(sa, s);
 
 	if (f == NULL)
 		handle_error("fopen");
 
-	fprintf(f, "connection from %s:%d at time %s\n", s,
-		ntohs(sa->sin_port), time);
+	pthread_mutex_lock(&output_file_mutex);
+	fprintf(f, "%s", logline);
+	INFO_PRINT("%s", logline);
+	pthread_mutex_unlock(&output_file_mutex);
 
 	fclose(f);
 	return 0;
 }
 
-void * process_connection(void * tinfo) {
+void * process_connection(void * ti) {
 	/*
 	 * Process a connection: send it a clock response and log the connection
 	 * to a log file.
 	 *
 	 * This function is given to pthread_create.
 	 */
-	int sock_fd = ((struct thread_info *)tinfo)->sock_fd;
-	struct sockaddr_in * sa = &((struct thread_info *)tinfo)->sa;
-
-	const char *fmt = "%lld";
-	time_t now = time(NULL);
-	int now_s_sz = snprintf(NULL, 0, fmt, (long long) now) + 1;
-	char now_s[now_s_sz];
-	snprintf(now_s, now_s_sz, fmt, (long long) now);
+	struct thread_info * tinfo = (struct thread_info *) ti;
 	char * weather_s = "76.2F";
+	const char *fmt = "%lld";
+	long long now = (long long) time(NULL);
+	int now_s_sz = snprintf(NULL, 0, fmt, now) + 1;
+	char now_s[now_s_sz];
 
-	char * recv_buf = NULL, * payload = NULL;
-	size_t recv_len = 0, payload_size = 0;
-	int rv;
+	char * unit_buf = NULL, * response, logline[1024];
+	ssize_t unit_len;
 
-	setup_sock_recv_buffer(&recv_buf, &recv_len);
+	snprintf(now_s, now_s_sz, fmt, now);
 
-	while (1) {
-		rv = recvunit(sock_fd, recv_buf, &recv_len,
-			      &payload, &payload_size);
-		if (rv == 0)
+	snprintf(logline, 1024, "%lld %s accepted\n", now,
+		 tinfo->si.ip_port_str);
+	write_log(&tinfo->si.sa, logline);
+
+	do {
+		now = (long long) time(NULL);
+		snprintf(now_s, now_s_sz, fmt, now);
+		unit_len = recvunit(&tinfo->si, &unit_buf);
+		if (unit_len == 0) {
 			// socket close, nothing to do
-			break;
-		INFO_PRINT("\tmsg=\"%s\", size=%ld\n", payload, payload_size);
+			snprintf(logline, 1024, "%lld %s closed\n",
+				 now, tinfo->si.ip_port_str);
+		} else {
+			if (strncmp(unit_buf, "time", unit_len) == 0)
+				response = now_s;
+			else if (strncmp(unit_buf, "weather", unit_len) == 0)
+				response = weather_s;
+			else
+				response = help;
 
-		if (strncmp(payload, "time", payload_size) == 0)
-			sendunit(sock_fd, now_s, now_s_sz);
-		else if (strncmp(payload, "weather", payload_size) == 0)
-			sendunit(sock_fd, weather_s, strlen(weather_s));
-		else
-			printf("not recognized\n");
-		free(payload);
+			sendstring(tinfo->si.sock_fd, response);
+			snprintf(logline, 1024, "%lld %s "
+				 "recv'ed=\"%s\" -> send=\"%s\"\n",
+				 now, tinfo->si.ip_port_str,
+				 unit_buf, response);
+		}
 
-	}
+		write_log(&tinfo->si.sa, logline);
+	} while (unit_len);
 
-	teardown_sock_recv_buffer(recv_buf);
-	if (recv_len)
-		INFO_PRINT("\tgot rid of recv_buf with data still in it =(\n");
+	close(tinfo->si.sock_fd);
 
-	printf("closed\n");
-	close(sock_fd);
-
-	pthread_mutex_lock(&output_file_mutex);
-	write_log(sa, now_s);
-	pthread_mutex_unlock(&output_file_mutex);
-
+	DESTROY_SOCK_IO(&tinfo->si);
 	free(tinfo); // we malloced for this before thread creation
 
 	return NULL;
@@ -117,11 +114,10 @@ int main(void) {
 		     4.  Connections are accepted with accept(2)."
 */
 
-	int tcp_socket, incoming_fd;
+	int sfd, accept_sfd;
 	int enable=1, rv;
 	socklen_t addrlen;
 	struct sockaddr_in bind_addr_in, incoming_addr_in;
-	char s[INET_ADDRSTRLEN];
 	pthread_attr_t attr;
 	struct thread_info * tinfo;
 
@@ -138,13 +134,13 @@ int main(void) {
 		handle_error_en(rv, "pthread_attr_setdetachstate");
 
 
-	if ((tcp_socket = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+	if ((sfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		handle_error("socket");
 	}
 	INFO_PRINT("socket created\n");
 
 	/* prevent problems with lingering socket from previous runs */
-	if (setsockopt(tcp_socket, SOL_SOCKET, SO_REUSEADDR, &enable,
+	if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &enable,
 		       sizeof(int)) == -1) {
 		handle_error("setsockopt");
 	}
@@ -154,44 +150,40 @@ int main(void) {
 	// INADDR_ANY => bind to all interfaces
 	bind_addr_in = build_addr_in(AF_INET, PORT, INADDR_ANY);
 
-	if (bind(tcp_socket, (struct sockaddr *) &bind_addr_in,
+	if (bind(sfd, (struct sockaddr *) &bind_addr_in,
 		 sizeof(struct sockaddr_in)) == -1) {
-		close(tcp_socket);
+		close(sfd);
 		handle_error("bind");
 	}
 	INFO_PRINT("bound to 0.0.0.0:%d\n", PORT);
 
-	if (listen(tcp_socket, BACKLOG) == -1) {
+	if (listen(sfd, BACKLOG) == -1) {
 		handle_error("listen");
 	}
 	INFO_PRINT("listening...\n");
 
 	while(1) {
 		addrlen = sizeof incoming_addr_in;
-		incoming_fd = accept(tcp_socket,
+		accept_sfd = accept(sfd,
 				     (struct sockaddr *) &incoming_addr_in,
 				     &addrlen);
-		if (incoming_fd == -1) {
+		if (accept_sfd == -1) {
 			handle_error("accept");
 		}
-
-		addr_to_buf(&incoming_addr_in, s);
-		INFO_PRINT("\taccepted connection from %s:%d\n", s,
-			   ntohs(incoming_addr_in.sin_port));
 
 		// build thread_info
 		tinfo = malloc(sizeof(struct thread_info));
 		memset(tinfo, 0, sizeof(struct thread_info)); // clear it
-		memcpy(&tinfo->sock_fd, &incoming_fd, sizeof(int));
-		memcpy(&tinfo->sa, &incoming_addr_in,
-		       sizeof(struct sockaddr_in));
+		tinfo->si.sock_fd = accept_sfd;
+		tinfo->si.sa = incoming_addr_in;
+		INIT_SOCK_IO(&tinfo->si);
 
 		pthread_create(&tinfo->thread_id, &attr, &process_connection,
 			       tinfo);
 	}
 
 	//clean up
-	close(tcp_socket);
+	close(sfd);
 
 	rv = pthread_attr_destroy(&attr);
 	if (rv != 0)
