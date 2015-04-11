@@ -53,26 +53,39 @@ int eval_command(struct sock_io * si, char * buf, size_t len) {
 }
 
 void weather_repl(struct sock_io * si) {
-	char * lineptr = NULL;
-	int resp;
-	size_t sz;
-	ssize_t read;
+	/* char * lineptr = NULL; */
+	/* int resp; */
+	/* size_t sz; */
+	/* ssize_t read; */
+	size_t max_cmd_len = 1024;
+	char cmd_buf[max_cmd_len];
+	ssize_t bytes;
 	while (1) {
-		sz = 0;
-		printf("%s", prompt);
-		read = getline(&lineptr, &sz, stdin);
-		if (read == -1)
-			handle_error("getline");
-		resp = eval_command(si, lineptr, read);
-		free(lineptr);
-		lineptr = NULL;
-		if (!resp)
-			return;
+		/* sz = 0; */
+		/* printf("%s", prompt); */
+		/* read = getline(&lineptr, &sz, stdin); */
+		/* if (read == -1) */
+		/* 	handle_error("getline"); */
+		/* resp = eval_command(si, lineptr, read); */
+		/* free(lineptr); */
+		/* lineptr = NULL; */
+		/* if (!resp) */
+		/* 	return; */
 
-		if (si->recv_len) {
-			INFO_PRINT("this was also left in the buffer?: \n");
-			DIAG_BUF(si->recv_buf, si->recv_len);
-		}
+		/* if (si->recv_len) { */
+		/* 	INFO_PRINT("this was also left in the buffer?: \n"); */
+		/* 	DIAG_BUF(si->recv_buf, si->recv_len); */
+		/* } */
+		printf("%s", prompt);
+		fflush(stdout);
+
+		bytes = read(0, cmd_buf, max_cmd_len);
+		printf("%d\n", (int) bytes);
+		if (bytes == -1)
+			handle_error("read");
+		else if (bytes == 0)
+			break;
+		sendall(si->sock_fd, cmd_buf, (size_t *) &bytes);
 	}
 }
 

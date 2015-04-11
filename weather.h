@@ -21,7 +21,7 @@
 
 #define PORT 7144 // the common port for our program
 
-#define EOT 0
+#define EOT '\n'
 
 #define MINCMDBUFSZ 2 // min payload size
 #define MAXCMDBUFSZ 32 // max payload size
@@ -74,6 +74,8 @@ char * port_string(struct sockaddr_in si);
 char * ip_string(struct sockaddr_in si);
 
 void sendunit(int sock_fd, char * buf, size_t len);
+
+int sendall(int s, char *buf, size_t *len);
 
 void sendstring(int sock_fd, char * buf);
 

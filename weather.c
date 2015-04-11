@@ -16,7 +16,7 @@ struct sockaddr_in build_addr_in(sa_family_t fam, int port, uint32_t addr) {
 	return sa;
 }
 
-int sendall(int s, char *buf, int *len)
+int sendall(int s, char *buf, size_t *len)
 {
     int total = 0;        // how many bytes we've sent
     int bytesleft = *len; // how many we have left to send
@@ -35,11 +35,11 @@ int sendall(int s, char *buf, int *len)
 }
 
 void sendunit(int sock_fd, char * buf, size_t len) {
-	int len_with_nl = len+1;
+	size_t len_with_nl = len+1;
 	char to[len_with_nl];
 	memcpy(to, buf, len);
 	to[len] = EOT;
-	sendall(sock_fd, to, (int *) &(len_with_nl));
+	sendall(sock_fd, to, &(len_with_nl));
 }
 
 void sendstring(int sock_fd, char * buf) {
