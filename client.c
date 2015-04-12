@@ -9,6 +9,7 @@
  * receives data from up to a specified size, prints that data to stdout and
  * exits.
  */
+#include <sys/select.h>
 
 #include "weather.h"
 
@@ -53,47 +54,47 @@ int eval_command(struct sock_io * si, char * buf, size_t len) {
 }
 
 void weather_repl(struct sock_io * si) {
-	/* char * lineptr = NULL; */
-	/* int resp; */
-	/* size_t sz; */
-	/* ssize_t read; */
 	size_t max_cmd_len = 1024;
 	char cmd_buf[max_cmd_len];
 	ssize_t bytes;
+	int n, rv;
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	FD_SET(0, &readfds);
+	FD_SET(si->sock_fd, &readfds);
+	n = MAX(0, si->sock_fd) + 1;
+	/* printf("%s", prompt); */
+	/* fflush(stdout); */
 	while (1) {
-		/* sz = 0; */
-		/* printf("%s", prompt); */
-		/* read = getline(&lineptr, &sz, stdin); */
-		/* if (read == -1) */
-		/* 	handle_error("getline"); */
-		/* resp = eval_command(si, lineptr, read); */
-		/* free(lineptr); */
-		/* lineptr = NULL; */
-		/* if (!resp) */
-		/* 	return; */
 
-		/* if (si->recv_len) { */
-		/* 	INFO_PRINT("this was also left in the buffer?: \n"); */
-		/* 	DIAG_BUF(si->recv_buf, si->recv_len); */
-		/* } */
-		printf("%s", prompt);
-		fflush(stdout);
+		rv = select(n, &readfds, NULL, NULL, NULL);
 
-		bytes = read(0, cmd_buf, max_cmd_len);
-		printf("%d\n", (int) bytes);
-		if (bytes == -1)
-			handle_error("read");
-		else if (bytes == 0)
-			break;
-		sendall(si->sock_fd, cmd_buf, (size_t *) &bytes);
+		if (rv == -1)
+			handle_error("select");
+		else {
+			if (FD_ISSET(0, &readfds)) {
+				bytes = read(0, cmd_buf, max_cmd_len);
+				if (bytes == -1)
+					handle_error("read");
+				else if (bytes == 0)
+					break;
+				sendall(si->sock_fd, cmd_buf, (size_t *) &bytes);
+			}
+			if (FD_ISSET(si->sock_fd, &readfds)) {
+				bytes = read(si->sock_fd, cmd_buf, max_cmd_len);
+				if (bytes == -1)
+					handle_error("read");
+				else if (bytes == 0)
+					break;
+				sendall(0, cmd_buf, (size_t *) &bytes);
+			}
+		}
 	}
 }
 
 int main(int argc, char *argv[])
 {
 	struct sock_io si;
-
-	INFO_PRINT("Weather Client, by Tim Martin 902396824, 2015-03-31\n");
 
 	if ((si.sock_fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		handle_error("socket");

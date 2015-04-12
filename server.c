@@ -52,48 +52,49 @@ void * process_connection(void * ti) {
 	 * This function is given to pthread_create.
 	 */
 	struct thread_info * tinfo = (struct thread_info *) ti;
-	char * weather_s = "76.2F";
-	const char *fmt = "%lld";
-	long long now = (long long) time(NULL);
-	int now_s_sz = snprintf(NULL, 0, fmt, now) + 1;
+	char * weather_s = "76.2F\n";
+	const char *fmt = "%lld\n";
+	int now_s_sz = snprintf(NULL, 0, fmt, NOW) + 1;
 	char now_s[now_s_sz];
 
 	char * unit_buf = NULL, * response, logline[1024];
 	ssize_t unit_len;
 
-	snprintf(now_s, now_s_sz, fmt, now);
+	snprintf(now_s, now_s_sz, fmt, NOW);
 
-	snprintf(logline, 1024, "%lld %s accepted\n", now,
+	snprintf(logline, 1024, "%lld %s accepted\n", NOW,
 		 tinfo->si.ip_port_str);
 	write_log(&tinfo->si.sa, logline);
 
+	sendstring(tinfo->si.sock_fd, client_banner);
+
 	do {
-		now = (long long) time(NULL);
-		snprintf(now_s, now_s_sz, fmt, now);
+		sendstring(tinfo->si.sock_fd, ">>> ");
+		snprintf(now_s, now_s_sz, fmt, NOW);
 		unit_len = recvunit(&tinfo->si, &unit_buf);
-		if (unit_len == 0) {
-			// socket close, nothing to do
-			snprintf(logline, 1024, "%lld %s closed\n",
-				 now, tinfo->si.ip_port_str);
-		} else {
+		if (unit_len) {
 			if (strncmp(unit_buf, "time", unit_len) == 0)
 				response = now_s;
 			else if (strncmp(unit_buf, "weather", unit_len) == 0)
 				response = weather_s;
+			else if (strncmp(unit_buf, "quit", unit_len) == 0)
+				break;
 			else
 				response = help;
 
 			sendstring(tinfo->si.sock_fd, response);
 			snprintf(logline, 1024, "%lld %s "
 				 "recv'ed=\"%s\" -> send=\"%s\"\n",
-				 now, tinfo->si.ip_port_str,
+				 NOW, tinfo->si.ip_port_str,
 				 unit_buf, response);
-		}
 
-		write_log(&tinfo->si.sa, logline);
+			write_log(&tinfo->si.sa, logline);
+		}
 	} while (unit_len);
 
 	close(tinfo->si.sock_fd);
+	snprintf(logline, 1024, "%lld %s closed\n", NOW, tinfo->si.ip_port_str);
+	write_log(&tinfo->si.sa, logline);
 
 	DESTROY_SOCK_IO(&tinfo->si);
 	free(tinfo); // we malloced for this before thread creation

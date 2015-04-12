@@ -23,8 +23,12 @@
 
 #define EOT '\n'
 
-#define MINCMDBUFSZ 2 // min payload size
-#define MAXCMDBUFSZ 32 // max payload size
+#define CR '\r'
+#define LF '\n'
+static const char CRLF[] = {CR, LF};
+#define CRLFLEN  2
+
+#define NOW ((long long) time(NULL))
 
 #define INFO_PRINT(...) fprintf(stderr, __VA_ARGS__)
 
@@ -45,6 +49,8 @@
 #define handle_error(msg) \
                  do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
+#define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
+
 struct sock_io {
   int sock_fd;
   struct sockaddr_in sa;
@@ -61,7 +67,12 @@ struct thread_info {
 static char * help = "COMMAND       DESCRIPTION\n"
                      "help          this help\n"
                      "time          print server time\n"
-                     "weather       print server weather";
+                     "weather       print server weather\n"
+                     "quit          close this socket\n";
+
+static char * client_banner = "Weather Client\n"
+                              "====================================\n"
+                              "by Tim Martin, 902396824, 2015-03-31\n";
 
 static pthread_mutex_t output_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -86,4 +97,3 @@ ssize_t extract_unit(struct sock_io * si, char ** unit);
 int print_buffer(char * buf, size_t len);
 
 int write_log(struct sockaddr_in * sa, char * logline);
-
